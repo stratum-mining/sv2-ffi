@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # build.sh fails when the committed header differs from what this
+  # version generates
+  CBINDGEN_VERSION: 0.29.4
+  # the fuzz job's toolchain and cargo-fuzz, pinned with fuzz/Cargo.lock so
+  # that a new nightly or release cannot fail a PR that changed nothing;
+  # bump them together, in a PR of their own
+  FUZZ_NIGHTLY: nightly-2026-08-07
+  CARGO_FUZZ_VERSION: 0.13.2
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt, clippy
+
+      - name: Install cbindgen
+        run: cargo install cbindgen --version "$CBINDGEN_VERSION" --locked
+
+      - name: Check formatting
+        run: |
+          cargo fmt --check
+          cargo fmt --check --manifest-path fuzz/Cargo.toml
+
+      - name: Run clippy
+        run: cargo clippy --release --all-targets --locked -- -D warnings
+
+      - name: Build, run the tests, then the C test under ASan and UBSan
+        run: SANITIZE=1 ./test.sh
+
+  msrv:
+    name: Rust 1.75
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # the toolchain of stratum-mining/stratum, and rust-version in Cargo.toml
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.75
+
+      - name: Run tests
+        run: cargo test --release --locked
+
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.FUZZ_NIGHTLY }}
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked
+
+      # a minute of each target; longer runs are local (README.md).
+      # cargo fuzz has no --locked, so fetch checks fuzz/Cargo.lock first.
+      - name: Fuzz
+        run: |
+          cargo "+$FUZZ_NIGHTLY" fetch --locked --manifest-path fuzz/Cargo.toml
+          for t in message_decode noise_transport channel_share; do
+            cargo "+$FUZZ_NIGHTLY" fuzz run "$t" -- -max_total_time=60 -max_len=8192
+          done
