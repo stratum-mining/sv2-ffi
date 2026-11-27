@@ -1,0 +1,6 @@
+# Keep `cargo update` and `cargo generate-lockfile` on versions that build
+# with the rust-version of Cargo.toml (Rust 1.75).  Only cargo 1.84 and
+# newer read this setting; an older cargo ignores it, so run those two
+# commands with cargo 1.84 or newer.
+[resolver]
+incompatible-rust-versions = "fallback"

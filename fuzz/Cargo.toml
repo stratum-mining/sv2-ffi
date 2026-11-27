@@ -1,0 +1,50 @@
+[package]
+name = "sv2_ffi_fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Run from the repository root with a nightly toolchain:
+#   cargo +nightly fuzz run message_decode -- -max_total_time=60
+# Each target calls the C API the way a C caller does.  A panic anywhere
+# under it is a crash even though the API catches panics: libfuzzer-sys
+# installs a panic hook that aborts the process (src/lib.rs of 0.4.13,
+# around line 91), and a hook runs before unwinding reaches catch_unwind.
+# cargo fuzz itself does not build with panic=abort.
+[dependencies]
+libfuzzer-sys = "0.4.13"
+sv2_ffi = { path = ".." }
+# the miner of message_decode and noise_transport: a peer that sends frames
+# the C API would never encode, as SRI roles drive codec_sv2
+codec_sv2 = { version = "8.0.0", features = ["noise_sv2"] }
+framing_sv2 = "9.0.0"
+noise_sv2 = "2.1.0"
+
+[[bin]]
+name = "message_decode"
+path = "fuzz_targets/message_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "noise_transport"
+path = "fuzz_targets/noise_transport.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "channel_share"
+path = "fuzz_targets/channel_share.rs"
+test = false
+doc = false
+bench = false
+
+# not part of any parent workspace
+[workspace]
+members = ["."]
